@@ -11,4 +11,8 @@ public class Constants
     public const string StorageCollectionFile = "__collection.json";
 
     public const string StorageCollectionItemsFile = "__items.json";
+
+    public const string Collection = "Collection";
+    
+    public const string Manifest = "Manifest";
 }
