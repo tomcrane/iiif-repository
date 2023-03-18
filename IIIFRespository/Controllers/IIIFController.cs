@@ -60,7 +60,7 @@ public class IIIFController : ControllerBase
         {
             return BadRequest($"{path} is not a storage collection");
         }
-        var body = new IIIFBody(value);
+        var body = new IIIFBody(value, path);
         if(body.IsCollectionWithNoItems)
         {
             // Create a new storage collection within this storage collection, using the supplied id (if present) to name.
