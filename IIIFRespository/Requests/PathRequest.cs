@@ -1,28 +1,40 @@
 ﻿using System.Security.Cryptography;
 
-namespace IIIFRespository.Requests;
+namespace IIIFRepository.Requests;
 
 public class PathRequest
 {
     public PathRequest(string root, string path)
     {
-        var fsPath = Path.Combine(root, "iiif", path);
+        var fsPath = Path.Combine(root, Constants.IIIFContainer, path);
         if (Directory.Exists(fsPath))
         {
             ResourceType = ResourceType.StorageCollection;
             // The ETag is based on this file, not the items:
             BaseFile = new FileInfo(Path.Combine(fsPath, Constants.StorageCollectionFile));
             ItemsFile = new FileInfo(Path.Combine(fsPath, Constants.StorageCollectionItemsFile));
+            if (path.EndsWith('/'))
+            {
+                CanonicalStorageCollectionPath = path;
+            } 
+            else
+            {
+                IsStorageCollectionWithoutTrailingSlash = true;
+                CanonicalStorageCollectionPath = path + "/";
+            }
+            ParentDirectory = BaseFile.Directory.Parent;
         } 
         else if (File.Exists(fsPath + Constants.ManifestSuffix))
         {
             ResourceType = ResourceType.Manifest;
             BaseFile = new FileInfo(Path.Combine(fsPath, Constants.ManifestSuffix));
+            ParentDirectory = BaseFile.Directory;
         }
         else if (File.Exists(fsPath + Constants.CollectionSuffix))
         {
             ResourceType = ResourceType.StoredCollection;
             BaseFile = new FileInfo(Path.Combine(fsPath, Constants.CollectionSuffix));
+            ParentDirectory = BaseFile.Directory;
         }
         else
         {
@@ -34,6 +46,10 @@ public class PathRequest
     public ResourceType ResourceType { get; private set; }
     public FileInfo BaseFile { get; private set; }
     public FileInfo? ItemsFile { get; private set; }
+    public DirectoryInfo ParentDirectory { get; private set; }
+    public bool IsStorageCollectionWithoutTrailingSlash { get; private set; }
+
+    public string CanonicalStorageCollectionPath { get; private set; }
 
     public string GetETag()
     {

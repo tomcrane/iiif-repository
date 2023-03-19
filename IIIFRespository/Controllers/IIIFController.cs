@@ -1,31 +1,28 @@
-﻿using IIIFRepository;
+﻿using IIIFRepository.Requests;
+using IIIFRepository.Responses;
 using IIIFRespository.Requests;
-using IIIFRespository.Responses;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
-namespace IIIFRespository.Controllers;
+namespace IIIFRepository.Controllers;
 
 
-[Route("iiif")]
+[Route(Constants.IIIFContainer)]
 [ApiController]
 public class IIIFController : ControllerBase
 {
-    private RepositorySettings RepoOptions { get; set; }
-    public IIIFController(IOptions<RepositorySettings> repoOptions)
+    private Storage storage;
+
+    public IIIFController(Storage storage)
     {
-        RepoOptions = repoOptions.Value;
+        this.storage = storage;
     }
 
-    private PathRequest GetPathRequest(string path)
-    {
-        return new PathRequest(RepoOptions.FileSystemRoot, path);
-    }
 
     [HttpGet("{**path}")]
     public IActionResult Get(string path)
     {
-        var pathRequest = GetPathRequest(path);
+        var pathRequest = storage.GetPathRequest(path);
 
         switch (pathRequest.ResourceType)
         {
@@ -37,6 +34,10 @@ public class IIIFController : ControllerBase
                     EntityTag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue(pathRequest.GetETag())
                 };
             case ResourceType.StorageCollection:
+                if (!path.EndsWith('/'))
+                {
+                    return Redirect(path + "/");
+                }
                 var vcb = new StorageCollectionBuilder(pathRequest);
                 Response.Headers.ETag = pathRequest.GetETag();
                 return new ContentResult
@@ -55,23 +56,65 @@ public class IIIFController : ControllerBase
     {
         // does not require an if-match because always a create.
         // May result in a conflict.
-        var pathRequest = GetPathRequest(path);
+        var pathRequest = storage.GetPathRequest(path);
         if(pathRequest.ResourceType != ResourceType.StorageCollection)
         {
-            return BadRequest($"{path} is not a storage collection");
+            return BadRequest($"{path} is not a Storage Collection. You can only POST to a Storage Collection.");
         }
-        var body = new IIIFBody(value, path);
-        if(body.IsCollectionWithNoItems)
+
+        var iiifBody = new IIIFBody(value, path);
+        if (iiifBody.IdAndPathAreTheSame)
+        {
+            return BadRequest($"POSTed id is the Storage Collection. You can't update this with a POST.");
+        }
+
+        // The body id must either be absent (in which case we'll name this) or it must be a child of the storage container
+
+        var containerUrl = Request.GetEncodedUrl();
+        if (!containerUrl.EndsWith('/')) containerUrl += "/";
+
+        string resourcePathName;
+        if (iiifBody.HasId)
+        {
+            if (string.IsNullOrWhiteSpace(iiifBody.ParentId))
+            {
+                return BadRequest($"No parent container derivable from supplied id: {iiifBody.Id}");
+            }
+            if (string.IsNullOrWhiteSpace(iiifBody.LastIdElement))
+            {
+                return BadRequest($"No resource path element derivable from supplied id: {iiifBody.Id}");
+            }
+            if (pathRequest.CanonicalStorageCollectionPath != iiifBody.ParentId)
+            {
+                return BadRequest($"POSTed id {iiifBody.Id} is not a child path of the Storage Collection {path}.");
+            }
+            resourcePathName = iiifBody.LastIdElement;
+        }
+        else
+        {
+            resourcePathName = Guid.NewGuid().ToString();
+            iiifBody.SetId(containerUrl + resourcePathName);
+        }
+
+        if(storage.Exists(pathRequest, resourcePathName))
+        {
+            return Conflict($"An item named {resourcePathName} already exists in the container {path}");
+        }
+
+
+        if(iiifBody.IsCollectionWithNoItems)
         {
             // Create a new storage collection within this storage collection, using the supplied id (if present) to name.
             // if id is present must match path and supply a valid, non conflicting file name.
-
+            storage.CreateStorageCollection(pathRequest, resourcePathName, iiifBody);
+            Response.ContentType = Constants.PresentationContentType;
+            return Created(containerUrl + resourcePathName + "/", iiifBody.RawBody);
         }
-        else if(body.IsCollectionWithItems || body.IsManifest)
+        else if(iiifBody.IsCollectionWithItems || iiifBody.IsManifest)
         {
-            // Add the resource (with extra file extensions)
-            // using the naming conventions
-
+            storage.CreateStoredResource(pathRequest, resourcePathName, iiifBody);
+            Response.ContentType = Constants.PresentationContentType;
+            return Created(containerUrl + resourcePathName, iiifBody.RawBody);
         }
         else
         {

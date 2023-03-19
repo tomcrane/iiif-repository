@@ -1,8 +1,8 @@
-﻿using IIIFRespository.Requests;
+﻿using IIIFRepository.Requests;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace IIIFRespository.Responses;
+namespace IIIFRepository.Responses;
 
 public class StorageCollectionBuilder
 {

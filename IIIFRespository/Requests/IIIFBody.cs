@@ -1,14 +1,16 @@
 ﻿using System.Text.Json;
 
-namespace IIIFRespository.Requests;
+namespace IIIFRepository.Requests;
 
 public class IIIFBody
 {
-    public IIIFBody(string body, string path)
+    public IIIFBody(string rawBody, string path)
     {
+        RawBody = rawBody;
+
         try
         {
-            using var doc = JsonDocument.Parse(body);
+            using var doc = JsonDocument.Parse(rawBody);
             Type = doc.RootElement.GetProperty("type").GetString();
             JsonElement idElement;
             if(doc.RootElement.TryGetProperty("id", out idElement))
@@ -16,6 +18,7 @@ public class IIIFBody
                 Id = idElement.GetString();
                 if (!string.IsNullOrWhiteSpace(Id))
                 {
+                    HasId = true;
                     var uri = new Uri(Id);
                     // does the path match the id?
                     var uriParts = uri.PathAndQuery.Split('?');
@@ -25,8 +28,20 @@ public class IIIFBody
                     }
                     else
                     {
-                        var uriPathElements = uriParts[0].Split('/');
-                        IdPathElement = uriPathElements.Last();
+                        var idPath = uriParts[0];
+                        var idPathElements = idPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                        LastIdElement = idPathElements.Last();
+                        int endLength = LastIdElement.Length;
+                        if (idPath.EndsWith('/'))
+                        {
+                            endLength++;
+                        }
+                        ParentId = idPath.Substring(0, idPath.Length - endLength); // will end with /
+
+                        if(idPath.TrimEnd('/') == path.TrimEnd('/'))
+                        {
+                            IdAndPathAreTheSame = true;
+                        }
 
                         // if the last element differs it might indicate that we are renaming
                         // if the id is missing we're asking to mint one (?)
@@ -45,8 +60,8 @@ public class IIIFBody
                 }
             }
 
-            var pathElements = path.Split('/');
-            TargetPathElement = pathElements.Last();
+            var pathElements = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            LastPathElement = pathElements.Last();
 
             JsonElement items;
             int itemCount = -1;
@@ -65,10 +80,13 @@ public class IIIFBody
         }
     }
 
+    public string RawBody { get; internal set; }
     public string? Id { get; internal set; }
-
-    public string? TargetPathElement { get; internal set; }
-    public string? IdPathElement { get; internal set; }
+    public bool HasId { get; internal set; }
+    public string? LastPathElement { get; internal set; }
+    public string? LastIdElement { get; internal set; }
+    public string? ParentId { get; internal set; }
+    public bool IdAndPathAreTheSame { get; internal set; }
 
     public string? Type { get; internal set; }
 
@@ -78,4 +96,10 @@ public class IIIFBody
     public bool IsCollectionWithNoItems { get; internal set; }
     public bool IsCollectionWithItems { get; internal set; }
     public bool IsManifest { get; internal set; }
+
+    public void SetId(string id)
+    {
+        throw new NotImplementedException("Need to manipulate the body JSON to set the ID");
+        // then update RawBody
+    }
 }
