@@ -243,12 +243,24 @@ namespace ProtocolTests
         // More tests to do:
         // Explore the naming conventions, must storage container IDs have a trailing slash?
         // Demonstrate adding multiple large manifests (e.g., harvest from Wellcome)
+        // Manifest comes back with eTag
+        // 
 
         // PUTs
         // Update a manifest in place
+        // Show required if-match behaviour
+        // PUT a storage collection (without items) to update all but items
 
         // PATCH
         // Rename a manifest (patch ID)
+
+        // DELETE
+
+        // OPTIONS
+        // Demonstrate OPTIONS results are different for storage collections vs stored collecitons and manifests 
+
+        // CORS
+        // Ensure CORS and ensure no conflict with OPTIONS
 
     }
 }
