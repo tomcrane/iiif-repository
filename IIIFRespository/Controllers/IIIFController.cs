@@ -3,12 +3,12 @@ using IIIFRepository.Responses;
 using IIIFRespository.Requests;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace IIIFRepository.Controllers;
 
 
 [Route(Constants.IIIFContainer)]
-[ApiController]
 public class IIIFController : ControllerBase
 {
     private Storage storage;
@@ -19,9 +19,12 @@ public class IIIFController : ControllerBase
     }
 
 
+
     [HttpGet("{**path}")]
-    public IActionResult Get(string path)
+    public IActionResult Get(string? path)
     {
+        // don't use path, use Request.Path, to see trailing slashes etc
+        path = Request.Path.ToString();
         var pathRequest = storage.GetPathRequest(path);
 
         switch (pathRequest.ResourceType)
@@ -31,7 +34,7 @@ public class IIIFController : ControllerBase
                 return new PhysicalFileResult(pathRequest.BaseFile.FullName, Constants.PresentationContentType)
                 {
                     // see if we get an etag anyway...
-                    EntityTag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue(pathRequest.GetETag())
+                    EntityTag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue("\"" + pathRequest.GetETag() + "\"")
                 };
             case ResourceType.StorageCollection:
                 if (!path.EndsWith('/'))
@@ -52,8 +55,9 @@ public class IIIFController : ControllerBase
 
 
     [HttpPost("{**path}")]
-    public IActionResult Post([FromBody] string value, string path)
+    public IActionResult Post([FromBody] JsonDocument value, string? path)
     {
+        path = Request.Path.ToString();
         // does not require an if-match because always a create.
         // May result in a conflict.
         var pathRequest = storage.GetPathRequest(path);
@@ -108,13 +112,13 @@ public class IIIFController : ControllerBase
             // if id is present must match path and supply a valid, non conflicting file name.
             storage.CreateStorageCollection(pathRequest, resourcePathName, iiifBody);
             Response.ContentType = Constants.PresentationContentType;
-            return Created(containerUrl + resourcePathName + "/", iiifBody.RawBody);
+            return Created(containerUrl + resourcePathName + "/", iiifBody.JsonBody);
         }
         else if(iiifBody.IsCollectionWithItems || iiifBody.IsManifest)
         {
             storage.CreateStoredResource(pathRequest, resourcePathName, iiifBody);
             Response.ContentType = Constants.PresentationContentType;
-            return Created(containerUrl + resourcePathName, iiifBody.RawBody);
+            return Created(containerUrl + resourcePathName, iiifBody.JsonBody);
         }
         else
         {
@@ -123,7 +127,7 @@ public class IIIFController : ControllerBase
     }
 
     [HttpPut("{**path}")]
-    public void Put([FromBody] string value, string path)
+    public void Put([FromBody] string value, string? path)
     {
         // same ops as POST but direct to target?
         // Path must exist
@@ -134,7 +138,7 @@ public class IIIFController : ControllerBase
     }
 
     [HttpPatch("{**path}")]
-    public void Patch([FromBody] string value, string path)
+    public void Patch([FromBody] string value, string? path)
     {
         // only for virtual collections (for now)? 
         // no, can also patch `id` of manifests, storedCollections and collections, to rename, but cannot EDIT 

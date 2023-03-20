@@ -4,43 +4,52 @@ namespace IIIFRepository.Requests;
 
 public class PathRequest
 {
-    public PathRequest(string root, string path)
+    public PathRequest(string root, string pathFromUrl)
     {
-        var fsPath = Path.Combine(root, Constants.IIIFContainer, path);
+        var localPath = pathFromUrl.Replace('/', Path.DirectorySeparatorChar);
+        if (localPath.StartsWith(Path.DirectorySeparatorChar))
+        {
+            localPath = localPath.Substring(1);
+        }
+
+        var fsPath = Path.Combine(root, localPath);
+
         if (Directory.Exists(fsPath))
         {
             ResourceType = ResourceType.StorageCollection;
             // The ETag is based on this file, not the items:
             BaseFile = new FileInfo(Path.Combine(fsPath, Constants.StorageCollectionFile));
             ItemsFile = new FileInfo(Path.Combine(fsPath, Constants.StorageCollectionItemsFile));
-            if (path.EndsWith('/'))
+            if (pathFromUrl.EndsWith('/'))
             {
-                CanonicalStorageCollectionPath = path;
+                CanonicalStorageCollectionPath = pathFromUrl;
             } 
             else
             {
                 IsStorageCollectionWithoutTrailingSlash = true;
-                CanonicalStorageCollectionPath = path + "/";
+                CanonicalStorageCollectionPath = pathFromUrl + "/";
             }
-            ParentDirectory = BaseFile.Directory.Parent;
+            ParentDirectory = BaseFile.Directory!.Parent!;
         } 
         else if (File.Exists(fsPath + Constants.ManifestSuffix))
         {
             ResourceType = ResourceType.Manifest;
-            BaseFile = new FileInfo(Path.Combine(fsPath, Constants.ManifestSuffix));
-            ParentDirectory = BaseFile.Directory;
+            BaseFile = new FileInfo(fsPath + Constants.ManifestSuffix);
+            ParentDirectory = BaseFile.Directory!;
         }
         else if (File.Exists(fsPath + Constants.CollectionSuffix))
         {
             ResourceType = ResourceType.StoredCollection;
-            BaseFile = new FileInfo(Path.Combine(fsPath, Constants.CollectionSuffix));
-            ParentDirectory = BaseFile.Directory;
+            BaseFile = new FileInfo(fsPath + Constants.CollectionSuffix);
+            ParentDirectory = BaseFile.Directory!;
         }
         else
         {
             ResourceType = ResourceType.Unknown;
             BaseFile = new FileInfo(fsPath);
+            ParentDirectory = BaseFile.Directory!;
         }
+        StorageDirectory = BaseFile.Directory!;
     }
 
     public ResourceType ResourceType { get; private set; }
@@ -48,8 +57,8 @@ public class PathRequest
     public FileInfo? ItemsFile { get; private set; }
     public DirectoryInfo ParentDirectory { get; private set; }
     public bool IsStorageCollectionWithoutTrailingSlash { get; private set; }
-
-    public string CanonicalStorageCollectionPath { get; private set; }
+    public DirectoryInfo StorageDirectory { get; private set; }
+    public string? CanonicalStorageCollectionPath { get; private set; }
 
     public string GetETag()
     {

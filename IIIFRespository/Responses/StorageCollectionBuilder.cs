@@ -15,24 +15,22 @@ public class StorageCollectionBuilder
 
     public string Read()
     {
-        JsonNode items;
-        JsonNode collection;
+        JsonDocument itemsDocument;
+        JsonDocument collection;
         using (var stream = pathRequest.ItemsFile.OpenRead())
         {
-            items = JsonNode.Parse(stream)!;
+            itemsDocument = JsonDocument.Parse(stream)!;
         }
 
         using (var stream = pathRequest.BaseFile.OpenRead())
         {
-            collection = JsonNode.Parse(stream)!;
+            collection = JsonDocument.Parse(stream)!;
         }
 
-        collection!["items"] = items;
-        var options = new JsonSerializerOptions
-        {
-            WriteIndented = true
-        };
+        var mutable = collection.Deserialize<JsonNode>();
+        mutable!["items"] = itemsDocument.RootElement.GetProperty("items").Deserialize<JsonArray>();
+        var options = new JsonSerializerOptions { WriteIndented = true };
 
-        return collection.ToJsonString(options);
+        return mutable.ToJsonString(options);
     }
 }

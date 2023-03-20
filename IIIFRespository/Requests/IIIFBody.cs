@@ -4,16 +4,16 @@ namespace IIIFRepository.Requests;
 
 public class IIIFBody
 {
-    public IIIFBody(string rawBody, string path)
+    public IIIFBody(JsonDocument jsonBody, string path)
     {
-        RawBody = rawBody;
+        JsonBody = jsonBody;
 
         try
         {
-            using var doc = JsonDocument.Parse(rawBody);
-            Type = doc.RootElement.GetProperty("type").GetString();
+            //using var doc = JsonDocument.Parse(rawBody);
+            Type = jsonBody.RootElement.GetProperty("type").GetString();
             JsonElement idElement;
-            if(doc.RootElement.TryGetProperty("id", out idElement))
+            if(jsonBody.RootElement.TryGetProperty("id", out idElement))
             {
                 Id = idElement.GetString();
                 if (!string.IsNullOrWhiteSpace(Id))
@@ -65,7 +65,7 @@ public class IIIFBody
 
             JsonElement items;
             int itemCount = -1;
-            if (doc.RootElement.TryGetProperty("items", out items))
+            if (jsonBody.RootElement.TryGetProperty("items", out items))
             {
                 itemCount = items.GetArrayLength();
             }
@@ -80,7 +80,8 @@ public class IIIFBody
         }
     }
 
-    public string RawBody { get; internal set; }
+    //public string RawBody { get; internal set; }
+    public JsonDocument JsonBody { get; internal set; }
     public string? Id { get; internal set; }
     public bool HasId { get; internal set; }
     public string? LastPathElement { get; internal set; }
