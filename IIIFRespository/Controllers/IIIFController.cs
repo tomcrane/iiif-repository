@@ -149,7 +149,7 @@ public class IIIFController : ControllerBase
     }
 
     [HttpPut("{**path}")]
-    public void Put([FromBody] string value, string? path)
+    public void Put([FromBody] JsonDocument value, string? path)
     {
         // same ops as POST but direct to target?
         // Path must exist

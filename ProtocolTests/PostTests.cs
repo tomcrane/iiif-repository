@@ -23,7 +23,11 @@ namespace ProtocolTests
 
         private string GetFullId(string path)
         {
-            return client.BaseAddress + path; 
+            if (path.StartsWith('/'))
+            {
+                path = path.Substring(1);
+            }
+            return client.BaseAddress + path;
         }
 
         [Fact]
