@@ -13,6 +13,8 @@ public class Storage
     private readonly RepositorySettings settings;
     private readonly ILogger<Storage> logger;
 
+    private static object syncObject = new object();
+
     public Storage(
         IOptions<RepositorySettings> repoOptions,
         ILogger<Storage> logger,
@@ -112,59 +114,62 @@ public class Storage
         // This is wholly file system based, but the filenames alone aren't enough, we can't store language maps etc
         // So instead we can collect id, type, label and thumbnail from all the objects in the collection.
 
-        var di = new DirectoryInfo(collectionDirectory);
-        var items = new JsonArray();
-        foreach(var fsi in di.EnumerateFileSystemInfos())
+        lock (syncObject)  // this is what makes this non-prod!
         {
-            FileInfo? resource = null;
-            if(fsi.Attributes.HasFlag(FileAttributes.Directory))
+            var di = new DirectoryInfo(collectionDirectory);
+            var items = new JsonArray();
+            foreach(var fsi in di.EnumerateFileSystemInfos())
             {
-                var childCollectionFile = Path.Combine(fsi.FullName, Constants.StorageCollectionFile);
-                resource = new FileInfo(childCollectionFile);
-
-            }
-            else if (fsi.Name.EndsWith(Constants.ManifestSuffix) || fsi.Name.EndsWith(Constants.CollectionSuffix))
-            {
-                resource = (FileInfo) fsi;
-            }
-            // other files, skip
-
-            if(resource != null) 
-            {
-                try
+                FileInfo? resource = null;
+                if(fsi.Attributes.HasFlag(FileAttributes.Directory))
                 {
-                    using var stream = resource.OpenRead();
-                    using var doc = JsonDocument.Parse(stream);
-                    string id = doc.RootElement.GetProperty("id").GetString()!;
-                    string type = doc.RootElement.GetProperty("type").GetString()!;
-                    JsonElement label = doc.RootElement.GetProperty("label");
-                    var item = new JsonObject()
+                    var childCollectionFile = Path.Combine(fsi.FullName, Constants.StorageCollectionFile);
+                    resource = new FileInfo(childCollectionFile);
+
+                }
+                else if (fsi.Name.EndsWith(Constants.ManifestSuffix) || fsi.Name.EndsWith(Constants.CollectionSuffix))
+                {
+                    resource = (FileInfo) fsi;
+                }
+                // other files, skip
+
+                if(resource != null) 
+                {
+                    try
                     {
-                        ["id"] = id,
-                        ["type"] = type,
-                        ["label"] = label.Deserialize<JsonNode>()
-                    };
-                    JsonElement thumbnail;
-                    if(doc.RootElement.TryGetProperty("thumbnail", out thumbnail))
-                    {
-                        item["thumbnail"] = thumbnail.Deserialize<JsonNode>();
+                        using var stream = resource.OpenRead();
+                        using var doc = JsonDocument.Parse(stream);
+                        string id = doc.RootElement.GetProperty("id").GetString()!;
+                        string type = doc.RootElement.GetProperty("type").GetString()!;
+                        JsonElement label = doc.RootElement.GetProperty("label");
+                        var item = new JsonObject()
+                        {
+                            ["id"] = id,
+                            ["type"] = type,
+                            ["label"] = label.Deserialize<JsonNode>()
+                        };
+                        JsonElement thumbnail;
+                        if(doc.RootElement.TryGetProperty("thumbnail", out thumbnail))
+                        {
+                            item["thumbnail"] = thumbnail.Deserialize<JsonNode>();
+                        }
+                        items.Add(item);
                     }
-                    items.Add(item);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Could not generate stub item for {file}", fsi.FullName);
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Could not generate stub item for {file}", fsi.FullName);
+                    }
                 }
             }
-        }
 
-        JsonNode itemsObj = new JsonObject()
-        {
-            ["items"] = items
-        };
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        var collectionFilePath = Path.Combine(di.FullName, Constants.StorageCollectionItemsFile);
-        File.WriteAllText(collectionFilePath, itemsObj.ToJsonString(options));
+            JsonNode itemsObj = new JsonObject()
+            {
+                ["items"] = items
+            };
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var collectionFilePath = Path.Combine(di.FullName, Constants.StorageCollectionItemsFile);
+            File.WriteAllText(collectionFilePath, itemsObj.ToJsonString(options));
+        }
     }
 
     public string GetCollectionJson(string collectionId)

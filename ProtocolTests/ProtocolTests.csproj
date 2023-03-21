@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\IIIFRespository\IIIFRespository.csproj" />
+    <ProjectReference Include="..\IIIFRespository\IIIFRepository.csproj" />
   </ItemGroup>
 
   <ItemGroup>
