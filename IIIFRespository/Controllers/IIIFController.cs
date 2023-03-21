@@ -3,6 +3,7 @@ using IIIFRepository.Responses;
 using IIIFRespository.Requests;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
+using System.Net;
 using System.Text.Json;
 
 namespace IIIFRepository.Controllers;
@@ -18,6 +19,11 @@ public class IIIFController : ControllerBase
         this.storage = storage;
     }
 
+    private ObjectResult SimpleProblem(HttpStatusCode statusCode, string message, string? detail = null)
+    {
+        return Problem(detail, "IIIF Respository", (int)statusCode, message, null);
+    }
+
 
 
     [HttpGet("{**path}")]
@@ -26,7 +32,7 @@ public class IIIFController : ControllerBase
         // don't use path, use Request.Path, to see trailing slashes etc
         path = Request.Path.ToString();
         var pathRequest = storage.GetPathRequest(path);
-
+        string eTag = "\"" + pathRequest.GetETag() + "\"";
         switch (pathRequest.ResourceType)
         {
             case ResourceType.Manifest:
@@ -34,7 +40,7 @@ public class IIIFController : ControllerBase
                 return new PhysicalFileResult(pathRequest.BaseFile.FullName, Constants.PresentationContentType)
                 {
                     // see if we get an etag anyway...
-                    EntityTag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue("\"" + pathRequest.GetETag() + "\"")
+                    EntityTag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue(eTag)
                 };
             case ResourceType.StorageCollection:
                 if (!path.EndsWith('/'))
@@ -42,14 +48,14 @@ public class IIIFController : ControllerBase
                     return Redirect(path + "/");
                 }
                 var vcb = new StorageCollectionBuilder(pathRequest);
-                Response.Headers.ETag = pathRequest.GetETag();
-                return new ContentResult
+                Response.Headers.ETag = eTag;
+                return new ContentResult()
                 {
                     ContentType = Constants.PresentationContentType,
                     Content = vcb.Read()
                 };
             default:
-                return NotFound();
+                return SimpleProblem(HttpStatusCode.NotFound, "Not found");
         }
     }
 
@@ -63,13 +69,15 @@ public class IIIFController : ControllerBase
         var pathRequest = storage.GetPathRequest(path);
         if(pathRequest.ResourceType != ResourceType.StorageCollection)
         {
-            return BadRequest($"{path} is not a Storage Collection. You can only POST to a Storage Collection.");
+            return SimpleProblem(HttpStatusCode.BadRequest, "Not a storage collection",
+                $"{path} is not a Storage Collection. You can only POST to a Storage Collection.");
         }
 
         var iiifBody = new IIIFBody(value, path);
         if (iiifBody.IdAndPathAreTheSame)
         {
-            return BadRequest($"POSTed id is the Storage Collection. You can't update this with a POST.");
+            return SimpleProblem(HttpStatusCode.BadRequest, "Cannot update with POST",
+                $"POSTed id is the Storage Collection. You can't update this with a POST.");
         }
 
         // The body id must either be absent (in which case we'll name this) or it must be a child of the storage container
@@ -82,15 +90,18 @@ public class IIIFController : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(iiifBody.ParentId))
             {
-                return BadRequest($"No parent container derivable from supplied id: {iiifBody.Id}");
+                return SimpleProblem(HttpStatusCode.BadRequest, "No parent container",
+                    $"No parent container derivable from supplied id: {iiifBody.Id}");
             }
             if (string.IsNullOrWhiteSpace(iiifBody.LastIdElement))
             {
-                return BadRequest($"No resource path element derivable from supplied id: {iiifBody.Id}");
+                return SimpleProblem(HttpStatusCode.BadRequest, "Invalid id",
+                    $"No resource path element derivable from supplied id: {iiifBody.Id}");
             }
             if (pathRequest.CanonicalStorageCollectionPath != iiifBody.ParentId)
             {
-                return BadRequest($"POSTed id {iiifBody.Id} is not a child path of the Storage Collection {path}.");
+                return SimpleProblem(HttpStatusCode.BadRequest, "Invalid id - not a child path",
+                    $"POSTed id {iiifBody.Id} is not a child path of the Storage Collection {path}.");
             }
             resourcePathName = iiifBody.LastIdElement;
         }
@@ -102,27 +113,38 @@ public class IIIFController : ControllerBase
 
         if(storage.Exists(pathRequest, resourcePathName))
         {
-            return Conflict($"An item named {resourcePathName} already exists in the container {path}");
+            return SimpleProblem(HttpStatusCode.Conflict, "Conflict",
+                $"An item named {resourcePathName} already exists in the container {path}");
         }
 
 
         if(iiifBody.IsCollectionWithNoItems)
         {
-            // Create a new storage collection within this storage collection, using the supplied id (if present) to name.
-            // if id is present must match path and supply a valid, non conflicting file name.
-            storage.CreateStorageCollection(pathRequest, resourcePathName, iiifBody);
-            Response.ContentType = Constants.PresentationContentType;
-            return Created(containerUrl + resourcePathName + "/", iiifBody.JsonBody);
+            if (iiifBody.IdEndsWithSlash)
+            {
+                // Create a new storage collection within this storage collection, using the supplied id (if present) to name.
+                // if id is present must match path and supply a valid, non conflicting file name.
+                storage.CreateStorageCollection(pathRequest, resourcePathName, iiifBody);
+                Response.ContentType = Constants.PresentationContentType;
+                return Created(containerUrl + resourcePathName + "/", iiifBody.JsonBody);
+            }
+            return SimpleProblem(HttpStatusCode.BadRequest, "Id must end with /",
+                $"Storage Collection id must end with '/' ({iiifBody.Id}");
         }
         else if(iiifBody.IsCollectionWithItems || iiifBody.IsManifest)
         {
+            if (iiifBody.IdEndsWithSlash)
+            {
+                return SimpleProblem(HttpStatusCode.BadRequest, "Id must NOT end with /",
+                    $"Stored resource id must NOT end with '/' ({iiifBody.Id}");
+            }
             storage.CreateStoredResource(pathRequest, resourcePathName, iiifBody);
             Response.ContentType = Constants.PresentationContentType;
             return Created(containerUrl + resourcePathName, iiifBody.JsonBody);
         }
         else
         {
-            return BadRequest($"Could not parse request body");
+            return SimpleProblem(HttpStatusCode.BadRequest, "Bad Request", "Could not parse request body");
         }
     }
 

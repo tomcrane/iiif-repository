@@ -19,6 +19,10 @@ public class IIIFBody
                 if (!string.IsNullOrWhiteSpace(Id))
                 {
                     HasId = true;
+                    if (Id[^1] == '/') 
+                    {
+                        IdEndsWithSlash = true;
+                    }
                     var uri = new Uri(Id);
                     // does the path match the id?
                     var uriParts = uri.PathAndQuery.Split('?');
@@ -84,6 +88,7 @@ public class IIIFBody
     public JsonDocument JsonBody { get; internal set; }
     public string? Id { get; internal set; }
     public bool HasId { get; internal set; }
+    public bool IdEndsWithSlash { get; internal set; }
     public string? LastPathElement { get; internal set; }
     public string? LastIdElement { get; internal set; }
     public string? ParentId { get; internal set; }

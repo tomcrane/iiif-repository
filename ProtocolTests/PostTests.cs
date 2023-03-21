@@ -180,7 +180,7 @@ namespace ProtocolTests
             // Arrange
             var collection = new Collection
             {
-                Id = GetFullId("iiif/test-post-6"),
+                Id = GetFullId("iiif/test-post-6/"),
                 Label = new LanguageMap("en", "Test Post 6 - " + nameof(Can_Create_Storage_Collection))
             };
 
@@ -198,7 +198,7 @@ namespace ProtocolTests
             // Arrange
             var collection = new Collection
             {
-                Id = GetFullId("iiif/test-post-7"),
+                Id = GetFullId("iiif/test-post-7/"),
                 Label = new LanguageMap("en", "Test Post 7 - " + nameof(Storage_Collection_Appears_In_Parent_Collection_Items))
             };
 
@@ -240,11 +240,131 @@ namespace ProtocolTests
         }
 
 
-        // More tests to do:
-        // Explore the naming conventions, must storage container IDs have a trailing slash?
-        // Demonstrate adding multiple large manifests (e.g., harvest from Wellcome)
-        // Manifest comes back with eTag
-        // 
+        // Need to decide - is the the presence of the trailing slash that makes it a storage collection?
+        // Or is it the absence of items?
+        // Or both?
+        // Going to assume that a storage collection must be created without items (like mkdir) and have a trailing slash.
+        [Fact]
+        public async Task Storage_Collection_Must_Have_Trailing_Slash()
+        {
+            // Arrange
+            var collection = new Collection
+            {
+                Id = GetFullId("iiif/test-post-9"),
+                Label = new LanguageMap("en", "Test Post 9 - " + nameof(Storage_Collection_Must_Have_Trailing_Slash))
+            };  // no items
+
+            // Act
+            var response1 = await client.PostAsync("/iiif/", collection.ToHttpContent());
+
+            // Assert
+            response1.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        }
+
+        [Fact]
+        public async Task Stored_Collection_Must_NOT_Have_Trailing_Slash()
+        {
+            // Arrange
+            var collection = new Collection
+            {
+                Id = GetFullId("iiif/test-post-10/"),
+                Label = new LanguageMap("en", "Test Post 10 - " + nameof(Storage_Collection_Must_Have_Trailing_Slash)),
+                Items = new List<ICollectionItem>
+                {
+                    new Manifest
+                    {
+                        Id = "https://iiif.wellcomecollection.org/presentation/b29269830",
+                        Label = new LanguageMap("en", "Report 1974")
+                    },
+                    new Manifest
+                    {
+                        Id = "https://iiif.wellcomecollection.org/presentation/b21463955",
+                        Label = new LanguageMap("en", "Alphitaa medico-botanical glossary from the Bodleian manuscript, Selden B.35")
+                    }
+                }
+            };
+
+            // Act
+            var response1 = await client.PostAsync("/iiif/", collection.ToHttpContent());
+
+            // Assert
+            response1.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        }
+
+
+        // Need to decide - is the the presence of the trailing slash that makes it a storage collection?
+        // Or is it the absence of items?
+        // Or both?
+        // Going to assume that a storage collection must be created without items (like mkdir) and have a trailing slash.
+        [Fact]
+        public async Task Storage_Collection_Will_Redirect()
+        {
+            // Arrange
+            var collection = new Collection
+            {
+                Id = GetFullId("iiif/test-post-11/"),
+                Label = new LanguageMap("en", "Test Post 11 - " + nameof(Storage_Collection_Will_Redirect))
+            };  // no items
+
+            // Act
+            var response1 = await client.PostAsync("/iiif/", collection.ToHttpContent());
+            var response2 = await client.GetAsync("/iiif/test-post-11");
+
+            // Assert
+            response1.StatusCode.Should().Be(System.Net.HttpStatusCode.Created);
+            response2.StatusCode.Should().Be(System.Net.HttpStatusCode.Found);
+            response2.Headers.Location!.OriginalString.Should().EndWith("/iiif/test-post-11/");
+        }
+
+        // See https://github.com/apache/couchdb/issues/620
+        // The initial POST that creates a resource should not return an ETag.
+        [Fact]
+        public async Task IIIF_Resources_Have_Etags()
+        {
+            // Arrange
+            var storageCollection = new Collection
+            {
+                Id = GetFullId("iiif/test-post-12a/"),
+                Label = new LanguageMap("en", "Test Post 12a - " + nameof(IIIF_Resources_Have_Etags))
+            };  // no items
+            var storedCollection = new Collection
+            {
+                Id = GetFullId("iiif/test-post-12b"),
+                Label = new LanguageMap("en", "Test Post 12b - " + nameof(IIIF_Resources_Have_Etags)),
+                Items = new List<ICollectionItem>
+                {
+                    new Manifest
+                    {
+                        Id = "https://iiif.wellcomecollection.org/presentation/b29269830",
+                        Label = new LanguageMap("en", "Report 1974")
+                    }
+                }
+            };
+            var manifest = new Manifest
+            {
+                Id = GetFullId("iiif/test-post-12c"),
+                Label = new LanguageMap("en", "Test Post 12c - " + nameof(IIIF_Resources_Have_Etags))
+            };
+
+            // Act
+            var response1a = await client.PostAsync("/iiif/", storageCollection.ToHttpContent());
+            var response1b = await client.GetAsync("/iiif/test-post-12a/");
+            var response2a = await client.PostAsync("/iiif/", storedCollection.ToHttpContent());
+            var response2b = await client.GetAsync("/iiif/test-post-12b");
+            var response3a = await client.PostAsync("/iiif/", manifest.ToHttpContent());
+            var response3b = await client.GetAsync("/iiif/test-post-12c");
+
+            // Assert
+            response1a.Headers.ETag.Should().BeNull();
+            response1b.Headers.ETag.Should().NotBeNull();
+            response2a.Headers.ETag.Should().BeNull();
+            response2b.Headers.ETag.Should().NotBeNull();
+            response3a.Headers.ETag.Should().BeNull();
+            response3b.Headers.ETag.Should().NotBeNull();
+        }
+
+        // Put file writing in a critical section; only one thread at a time may enter.
+
 
         // PUTs
         // Update a manifest in place
